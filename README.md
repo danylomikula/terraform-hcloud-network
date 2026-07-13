@@ -11,6 +11,7 @@ Terraform module that provisions and manages Hetzner Cloud networks, subnets, an
 - Ability to reference existing networks by either ID or name when reusing infrastructure
 - Support for multiple subnets across network zones and subnet types (`server`, `cloud`, or `vswitch`)
 - Optional custom routes for advanced scenarios (VPN gateways, proxy servers)
+- Optional delete protection and vSwitch route exposure on the managed network
 - Helper outputs with aggregated subnet IDs (per zone and for vSwitch subnets) to simplify downstream wiring
 - Consistent outputs that expose identifiers and computed attributes for downstream modules
 
@@ -77,7 +78,7 @@ To reuse an existing network by name and let the module manage only subnets/rout
 ```hcl
 module "hcloud_network_existing" {
   source  = "danylomikula/network/hcloud"
-  version = "~> 1.0"
+  version = "~> 2.0"
 
   create_network        = false
   existing_network_name = "lab-core-shared"
@@ -102,6 +103,30 @@ Review the [examples](./examples) directory for a fully working configuration th
 | `examples/reuse-existing` | Reuses an existing network by name and only adds new subnets. Outputs aggregated subnet IDs for quick consumption. |
 | `examples/vswitch-subnets` | Focuses on vSwitch-backed subnets that attach to pre-existing vSwitch IDs supplied via variables. |
 | `examples/routes-only` | Demonstrates managing custom routes on an existing network (e.g., for VPN gateway or proxy server scenarios). |
+
+## Adopting Existing Networks
+
+If a network was created outside this module (Hetzner Console, another Terraform workspace) there are two ways to use it with the module:
+
+### Reference without managing
+
+Set `create_network = false` and pass `existing_network_id` or `existing_network_name`. The module reads the network through a data source and manages only the subnets and routes it creates; the network itself stays unmanaged.
+
+### Adopt with `terraform import`
+
+Set `create_network = true`, declare `name`, `ip_range`, `labels`, `delete_protection`, and `expose_routes_to_vswitch` to match the existing network, then import each resource the module would otherwise create:
+
+```bash
+terraform import 'module.<module_name>.hcloud_network.this[0]' <network_id>
+terraform import 'module.<module_name>.hcloud_network_subnet.this["<subnet_key>"]' '<network_id>-<subnet_ip_range>'
+terraform import 'module.<module_name>.hcloud_network_route.this["<route_key>"]' '<network_id>-<destination>'
+```
+
+Run `terraform plan` afterwards and verify there is no diff. Things to watch out for:
+
+- `delete_protection` defaults to `false`. If the existing network has it enabled, set `delete_protection = true` in your module call — otherwise the plan will want to disable it.
+- Subnet and route import IDs are two-part compound IDs: `<network_id>-<subnet_ip_range>` for subnets and `<network_id>-<destination>` for routes (the gateway is not part of the route import ID).
+- `delete_protection` only guards against deletion outside of Terraform (Console/API): when Terraform itself destroys the network, the provider lifts the lock first. To protect the network from `terraform destroy` as well, use the [`prevent_destroy`](https://developer.hashicorp.com/terraform/tutorials/state/resource-lifecycle#prevent-resource-deletion) lifecycle attribute.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -136,8 +161,10 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_create_network"></a> [create\_network](#input\_create\_network) | When true, the module creates the Hetzner Cloud network; when false, an existing network ID must be provided. | `bool` | `true` | no |
+| <a name="input_delete_protection"></a> [delete\_protection](#input\_delete\_protection) | Enable delete protection on the managed network. Has no effect when create\_network is false (the module does not modify protection on networks it merely references). | `bool` | `false` | no |
 | <a name="input_existing_network_id"></a> [existing\_network\_id](#input\_existing\_network\_id) | ID of an existing Hetzner Cloud network to reuse when create\_network is false. | `number` | `null` | no |
 | <a name="input_existing_network_name"></a> [existing\_network\_name](#input\_existing\_network\_name) | Name of an existing Hetzner Cloud network to reuse when create\_network is false. | `string` | `null` | no |
+| <a name="input_expose_routes_to_vswitch"></a> [expose\_routes\_to\_vswitch](#input\_expose\_routes\_to\_vswitch) | Expose the network routes to the vSwitch connection. Only takes effect when a vSwitch connection is active. Has no effect when create\_network is false. | `bool` | `false` | no |
 | <a name="input_ip_range"></a> [ip\_range](#input\_ip\_range) | CIDR of the Hetzner Cloud network (for example 10.0.0.0/16). Required when create\_network is true. | `string` | `null` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Labels applied to the network and subnets. | `map(string)` | `{}` | no |
 | <a name="input_name"></a> [name](#input\_name) | Name for the Hetzner Cloud network. Required when create\_network is true. | `string` | `null` | no |

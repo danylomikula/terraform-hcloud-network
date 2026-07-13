@@ -32,6 +32,18 @@ variable "labels" {
   default     = {}
 }
 
+variable "delete_protection" {
+  description = "Enable delete protection on the managed network. Has no effect when create_network is false (the module does not modify protection on networks it merely references)."
+  type        = bool
+  default     = false
+}
+
+variable "expose_routes_to_vswitch" {
+  description = "Expose the network routes to the vSwitch connection. Only takes effect when a vSwitch connection is active. Has no effect when create_network is false."
+  type        = bool
+  default     = false
+}
+
 variable "existing_network_id" {
   description = "ID of an existing Hetzner Cloud network to reuse when create_network is false."
   type        = number
