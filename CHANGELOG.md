@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/danylomikula/terraform-hcloud-network/compare/v2.0.0...v2.1.0) (2026-07-13)
+
+
+### Features
+
+* expose delete_protection and expose_routes_to_vswitch on the managed network ([#6](https://github.com/danylomikula/terraform-hcloud-network/issues/6)) ([cc54b7f](https://github.com/danylomikula/terraform-hcloud-network/commit/cc54b7f32d18ab157a5ad02c89f88fc6f929e254))
+
 ## [2.0.0](https://github.com/danylomikula/terraform-hcloud-network/compare/v1.0.0...v2.0.0) (2026-07-10)
 
 
