@@ -42,7 +42,7 @@ This is documented in [Hetzner Cloud Networks FAQ](https://docs.hetzner.com/clou
 ```hcl
 module "hcloud_network" {
   source  = "danylomikula/network/hcloud"
-  version = "~> 2.0"
+  version = "~> 2.1"
 
   create_network = true
   name           = "lab-core"
