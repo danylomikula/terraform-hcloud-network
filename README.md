@@ -104,29 +104,67 @@ Review the [examples](./examples) directory for a fully working configuration th
 | `examples/vswitch-subnets` | Focuses on vSwitch-backed subnets that attach to pre-existing vSwitch IDs supplied via variables. |
 | `examples/routes-only` | Demonstrates managing custom routes on an existing network (e.g., for VPN gateway or proxy server scenarios). |
 
-## Adopting Existing Networks
+## Importing Existing Networks
 
-If a network was created outside this module (Hetzner Console, another Terraform workspace) there are two ways to use it with the module:
+Networks created outside Terraform (e.g. via the Hetzner Cloud Console) can be imported into this module with an [`import` block](https://developer.hashicorp.com/terraform/language/import). If the network itself should stay unmanaged, skip the import entirely and set `create_network = false` with `existing_network_id` or `existing_network_name` — the module then only manages the subnets and routes it creates.
 
-### Reference without managing
+To adopt the network fully, inspect it with `hcloud network describe <network-id> -o json`, mirror it in the module input, then verify the first plan shows no changes:
 
-Set `create_network = false` and pass `existing_network_id` or `existing_network_name`. The module reads the network through a data source and manages only the subnets and routes it creates; the network itself stays unmanaged.
+```hcl
+module "network" {
+  source  = "danylomikula/network/hcloud"
+  version = "~> 2.1"
 
-### Adopt with `terraform import`
+  name     = "legacy-core"
+  ip_range = "10.0.0.0/16"
 
-Set `create_network = true`, declare `name`, `ip_range`, `labels`, `delete_protection`, and `expose_routes_to_vswitch` to match the existing network, then import each resource the module would otherwise create:
+  # Match the live protection flag — otherwise the first plan
+  # wants to disable it.
+  delete_protection = true
 
-```bash
-terraform import 'module.<module_name>.hcloud_network.this[0]' <network_id>
-terraform import 'module.<module_name>.hcloud_network_subnet.this["<subnet_key>"]' '<network_id>-<subnet_ip_range>'
-terraform import 'module.<module_name>.hcloud_network_route.this["<route_key>"]' '<network_id>-<destination>'
+  subnets = {
+    web = {
+      type         = "cloud"
+      network_zone = "eu-central"
+      ip_range     = "10.0.1.0/24"
+    }
+  }
+
+  routes = {
+    vpn-backhaul = {
+      destination = "172.16.0.0/12"
+      gateway     = "10.0.1.10"
+    }
+  }
+}
+
+# Import the network by its ID.
+import {
+  to = module.network.hcloud_network.this[0]
+  id = "1234567"
+}
+
+# Subnets import with "<network_id>-<ip_range>".
+import {
+  to = module.network.hcloud_network_subnet.this["web"]
+  id = "1234567-10.0.1.0/24"
+}
+
+# Routes import with "<network_id>-<destination>" — the gateway
+# is not part of the import ID.
+import {
+  to = module.network.hcloud_network_route.this["vpn-backhaul"]
+  id = "1234567-172.16.0.0/12"
+}
 ```
 
-Run `terraform plan` afterwards and verify there is no diff. Things to watch out for:
+**Import checklist:**
 
-- `delete_protection` defaults to `false`. If the existing network has it enabled, set `delete_protection = true` in your module call — otherwise the plan will want to disable it.
-- Subnet and route import IDs are two-part compound IDs: `<network_id>-<subnet_ip_range>` for subnets and `<network_id>-<destination>` for routes (the gateway is not part of the route import ID).
-- `delete_protection` only guards against deletion outside of Terraform (Console/API): when Terraform itself destroys the network, the provider lifts the lock first. To protect the network from `terraform destroy` as well, use the [`prevent_destroy`](https://developer.hashicorp.com/terraform/tutorials/state/resource-lifecycle#prevent-resource-deletion) lifecycle attribute.
+1. Match `ip_range` exactly — changing it replaces the network. Verify the first plan shows no destroy/replace actions.
+2. Match `delete_protection` and `expose_routes_to_vswitch` to the live flags. Both default to `false`, so importing a protected network without `delete_protection = true` leaves a plan diff that wants to disable the protection.
+3. Subnet and route map keys are free-form Terraform addresses — resource identity comes from the import ID, so pick keys that read well and keep them stable.
+4. Match `labels` to the live network — a mismatch is only a harmless in-place update, but it keeps the first plan from being clean.
+5. `delete_protection` only guards against deletion outside of Terraform (Console/API): when Terraform itself destroys the network, the provider lifts the lock first. To protect the network from `terraform destroy` as well, use the [`prevent_destroy`](https://developer.hashicorp.com/terraform/tutorials/state/resource-lifecycle#prevent-resource-deletion) lifecycle attribute.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
